@@ -149,37 +149,75 @@ io.on("connection", (socket) => {
     }, delay);
   }
 
+  // socket.on('stop', (roomID) => {
+  //   // Check if the room exists in activeRooms
+  //   if (activeRooms[roomID]) {
+  //     const room = activeRooms[roomID];
+  //     const participantSocketIDs = Object.keys(room.participants);
+
+  //     if (participantSocketIDs.length > 2) {
+  //       // More than two participants, only the user hitting 'stop' should leave
+  //       io.to(socket.id).emit('ghostLost');
+  //       socket.leave(`room-${roomID}`);
+  //       return;
+  //     } else {
+  //       // Two or fewer participants, both should leave the room
+  //       participantSocketIDs.forEach((participantSocketID) => {
+  //         io.to(participantSocketID).emit('ghostLost');
+  //         const socketToLeave = io.sockets.sockets[participantSocketID];
+  //         if (socketToLeave) {
+  //           socketToLeave.leave(`room-${roomID}`);
+  //         }
+  //       });
+
+  //       // Emit 'roomClosed' when room is closed
+  //       participantSocketIDs.forEach((participantSocketID) => {
+  //         io.to(participantSocketID).emit('roomClosed');
+  //       });
+  //       // Remove the room from activeRooms
+  //       delete activeRooms[roomID];
+  //     }     
+  //   }
+  // });
+
   socket.on('stop', (roomID) => {
-    // Check if the room exists in activeRooms
     if (activeRooms[roomID]) {
       const room = activeRooms[roomID];
       const participantSocketIDs = Object.keys(room.participants);
-
+  
       if (participantSocketIDs.length > 2) {
-        // More than two participants, only the user hitting 'stop' should leave
         io.to(socket.id).emit('ghostLost');
         socket.leave(`room-${roomID}`);
+        delete room.participants[socket.id];
+        console.log(`User ${socket.id} left room ${roomID} individually.`);
+        participantSocketIDs.forEach((participantSocketID) => {
+          if (participantSocketID !== socket.id) {
+            io.to(participantSocketID).emit('participantLeft', { participantID: socket.id });
+          }
+        });
       } else {
-        // Two or fewer participants, both should leave the room
         participantSocketIDs.forEach((participantSocketID) => {
           io.to(participantSocketID).emit('ghostLost');
           const socketToLeave = io.sockets.sockets[participantSocketID];
           if (socketToLeave) {
             socketToLeave.leave(`room-${roomID}`);
+            delete room.participants[participantSocketID];
+            console.log(`User ${participantSocketID} left room ${roomID}.`);
           }
         });
-
-        // Emit 'roomClosed' when room is closed
+  
         participantSocketIDs.forEach((participantSocketID) => {
           io.to(participantSocketID).emit('roomClosed');
         });
+        delete activeRooms[roomID];
+        console.log(`Room ${roomID} is now closed.`);
       }
-
-      // Remove the room from activeRooms
-      delete activeRooms[roomID];
+  
+      console.log(`Active room ${roomID} participants:`, room.participants);
     }
   });
-
+  
+  
 
 
 
@@ -230,21 +268,40 @@ io.on("connection", (socket) => {
     }
   });
 
-  socket.on("disconnect", () => {
+  socket.on('disconnect', () => {
     if (currentRoom) {
       const roomID = currentRoom.roomID;
       delete currentRoom.participants[socket.id];
       socket.leave(`room-${roomID}`);
+  
+      // Notify other participants about the disconnection
+      io.to(`room-${roomID}`).emit('participantLeft', { participantID: socket.id });
+      // Update participant list
       io.to(`room-${roomID}`).emit(
-        "participantList",
+        'participantList',
         Object.values(currentRoom.participants)
       );
+  
+      if (Object.keys(currentRoom.participants).length === 1) {
+        // If only one participant left in the room
+        const remainingParticipantID = Object.keys(currentRoom.participants)[0];
+  
+        // Notify the remaining participant about the disconnection and remove the room
+        io.to(remainingParticipantID).emit('ghostLost');
+        const remainingSocket = io.sockets.sockets[remainingParticipantID];
+        if (remainingSocket) {
+          remainingSocket.leave(`room-${roomID}`);
+        }
+        delete activeRooms[roomID];
+      }
+      
       if (Object.keys(currentRoom.participants).length === 0) {
         delete activeRooms[roomID];
       }
       currentRoom = null;
     }
   });
+  
 
   // Helper function to join a room
   function joinRoom(socket, roomID) {
