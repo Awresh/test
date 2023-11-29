@@ -44,8 +44,10 @@ io.on("connection", (socket) => {
     const matchingInterestIndex = waitingUser.findIndex((user) => {
       return interests.some((interest) => user.interests.includes(interest)) &&
         !(matchedSocket[socket.id] && matchedSocket[socket.id].includes(user.socketID)) &&
-        !(matchedSocket[user.socketID] && matchedSocket[user.socketID].includes(socket.id));
+        !(matchedSocket[user.socketID] && matchedSocket[user.socketID].includes(socket.id)) &&
+        socket.id !== user.socketID;
     });
+
 
     if (matchingInterestIndex !== -1) {
 
@@ -202,46 +204,46 @@ io.on("connection", (socket) => {
     if (activeRooms[roomID]) {
       const room = activeRooms[roomID];
       const participantSocketIDs = Object.keys(room.participants);
-
-      if (participantSocketIDs.length > 2) {
+  
+      if (participantSocketIDs.length <= 2) {
+        // Remove both users from active room
+        participantSocketIDs.forEach((participantSocketID) => {
+          // Remove user from waiting list if present
+          const waitingUserIndex = waitingUser.findIndex(user => user.socketID === participantSocketID);
+          if (waitingUserIndex !== -1) {
+            waitingUser.splice(waitingUserIndex, 1);
+            console.log(`User ${participantSocketID} removed from waiting list.`);
+          }
+  
+          io.to(participantSocketID).emit('roomClosed');
+          const leavingParticipant = room.participants[participantSocketID];
+          console.log(`User ${leavingParticipant.nickname} (${participantSocketID}) left room ${roomID}.`);
+          delete room.participants[participantSocketID];
+        });
+  
+        delete activeRooms[roomID];
+        console.log(`Room ${roomID} is now closed.`);
+      } else {
+        // Individual stop for a user when more than 2 participants are present
         io.to(socket.id).emit('ghostLost');
         socket.leave(`room-${roomID}`);
         const leavingParticipant = room.participants[socket.id];
         delete room.participants[socket.id];
         console.log(`User ${leavingParticipant.nickname} (${socket.id}) left room ${roomID} individually.`);
-
+  
         // Emit event to other participant(s) in the room
         participantSocketIDs.forEach((participantSocketID) => {
           if (participantSocketID !== socket.id) {
             io.to(participantSocketID).emit('participantLeft', { participantID: socket.id, nickname: leavingParticipant.nickname });
           }
         });
-      } else {
-        participantSocketIDs.forEach((participantSocketID) => {
-          io.to(participantSocketID).emit('ghostLost');
-          const socketToLeave = io.sockets.sockets[participantSocketID];
-          if (socketToLeave) {
-            const leavingParticipant = room.participants[participantSocketID];
-            socketToLeave.leave(`room-${roomID}`);
-            delete room.participants[participantSocketID];
-            console.log(`User ${leavingParticipant.nickname} (${participantSocketID}) left room ${roomID}.`);
-
-            // Emit event to the other participant in the room
-            const remainingParticipant = participantSocketIDs.find(id => id !== participantSocketID);
-            io.to(remainingParticipant).emit('participantLeft', { participantID: participantSocketID, nickname: leavingParticipant.nickname });
-          }
-        });
-
-        participantSocketIDs.forEach((participantSocketID) => {
-          io.to(participantSocketID).emit('roomClosed');
-        });
-        delete activeRooms[roomID];
-        console.log(`Room ${roomID} is now closed.`);
       }
-
+  
       console.log(`Active room ${roomID} participants:`, room.participants);
     }
+    console.log("Waiting List:", waitingUser);
   });
+  
 
 
 
@@ -335,6 +337,14 @@ io.on("connection", (socket) => {
         console.log(`No participants left in room: ${roomID}. Deleting the room.`);
         delete activeRooms[roomID];
       }
+
+      // Remove user from waiting list if present
+      const waitingUserIndex = waitingUser.findIndex(user => user.socketID === socket.id);
+      if (waitingUserIndex !== -1) {
+        waitingUser.splice(waitingUserIndex, 1);
+        console.log(`User ${socket.id} removed from waiting list.`);
+      }
+      console.log("Waiting List:", waitingUser);
 
       currentRoom = null;
     }
