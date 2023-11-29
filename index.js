@@ -229,7 +229,7 @@ io.on("connection", (socket) => {
         socket.leave(`room-${roomID}`);
         const leavingParticipant = room.participants[socket.id];
         delete room.participants[socket.id];
-        console.log(`User ${leavingParticipant.nickname} (${socket.id}) left room ${roomID} individually.`);
+       // console.log(`User ${leavingParticipant.nickname} (${socket.id}) left room ${roomID} individually.`);
   
         // Emit event to other participant(s) in the room
         participantSocketIDs.forEach((participantSocketID) => {
