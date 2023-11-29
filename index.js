@@ -82,7 +82,7 @@ io.on("connection", (socket) => {
 
 
       // Set timeout to remove the socket ID after 3 minutes
-      removeSocketIDAfterDelay(socket.id, matchingUser.socketID,  30000);
+      removeSocketIDAfterDelay(socket.id, matchingUser.socketID, 30000);
       const roomID = matchingUser.roomID;
 
 
@@ -122,30 +122,48 @@ io.on("connection", (socket) => {
   function removeSocketIDAfterDelay(socketID, matchedSocketID, delay) {
     setTimeout(() => {
       console.log(`Removing ${matchedSocketID} from ${socketID} after ${delay / 1000} seconds.`);
-  
+
       // Construct updated matchedSocket without the targeted socket IDs
       const updatedMatchedSocket = {};
-  
+
+      // Filter out the undefined properties before manipulating the object
       Object.keys(matchedSocket).forEach((key) => {
-        updatedMatchedSocket[key] = matchedSocket[key].filter(id => id !== matchedSocketID);
+        if (matchedSocket[key]) {
+          updatedMatchedSocket[key] = matchedSocket[key].filter(id => id !== matchedSocketID);
+        }
       });
-  
-      updatedMatchedSocket[matchedSocketID] = updatedMatchedSocket[matchedSocketID].filter(id => id !== socketID);
-  
+      Object.keys(matchedSocket).forEach(key => {
+        if (matchedSocket[key] == undefined) {
+          delete matchedSocket[key];
+        }
+      });
+
+
       // Update matchedSocketID's matchedSocket (reverse connection)
-      updatedMatchedSocket[matchedSocketID] = updatedMatchedSocket[matchedSocketID].filter(id => id !== socketID);
-  
+      // Check if the property exists and is not undefined before filtering
+      if (updatedMatchedSocket[matchedSocketID] !== undefined) {
+        updatedMatchedSocket[matchedSocketID] = updatedMatchedSocket[matchedSocketID].filter(id => id !== socketID);
+      } else {
+        console.log(`Property ${matchedSocketID} does not exist or is undefined.`);
+      }
+
+
       // Update the original matchedSocket with the updated one
       Object.keys(matchedSocket).forEach((key) => {
         matchedSocket[key] = updatedMatchedSocket[key];
       });
-  
+
       matchedSocket[matchedSocketID] = updatedMatchedSocket[matchedSocketID];
       matchedSocket[socketID] = updatedMatchedSocket[socketID];
-  
+      Object.keys(matchedSocket).forEach(key => {
+        if (matchedSocket[key] == undefined) {
+          delete matchedSocket[key];
+        }
+      });
       const matchedSocketArray = Object.entries(matchedSocket)
         .map(([key, value]) => [key, Array.isArray(value) ? value.slice() : value]);
       console.log('Matched Socket Data:', matchedSocketArray);
+
     }, delay);
   }
 
@@ -184,15 +202,18 @@ io.on("connection", (socket) => {
     if (activeRooms[roomID]) {
       const room = activeRooms[roomID];
       const participantSocketIDs = Object.keys(room.participants);
-  
+
       if (participantSocketIDs.length > 2) {
         io.to(socket.id).emit('ghostLost');
         socket.leave(`room-${roomID}`);
+        const leavingParticipant = room.participants[socket.id];
         delete room.participants[socket.id];
-        console.log(`User ${socket.id} left room ${roomID} individually.`);
+        console.log(`User ${leavingParticipant.nickname} (${socket.id}) left room ${roomID} individually.`);
+
+        // Emit event to other participant(s) in the room
         participantSocketIDs.forEach((participantSocketID) => {
           if (participantSocketID !== socket.id) {
-            io.to(participantSocketID).emit('participantLeft', { participantID: socket.id });
+            io.to(participantSocketID).emit('participantLeft', { participantID: socket.id, nickname: leavingParticipant.nickname });
           }
         });
       } else {
@@ -200,24 +221,29 @@ io.on("connection", (socket) => {
           io.to(participantSocketID).emit('ghostLost');
           const socketToLeave = io.sockets.sockets[participantSocketID];
           if (socketToLeave) {
+            const leavingParticipant = room.participants[participantSocketID];
             socketToLeave.leave(`room-${roomID}`);
             delete room.participants[participantSocketID];
-            console.log(`User ${participantSocketID} left room ${roomID}.`);
+            console.log(`User ${leavingParticipant.nickname} (${participantSocketID}) left room ${roomID}.`);
+
+            // Emit event to the other participant in the room
+            const remainingParticipant = participantSocketIDs.find(id => id !== participantSocketID);
+            io.to(remainingParticipant).emit('participantLeft', { participantID: participantSocketID, nickname: leavingParticipant.nickname });
           }
         });
-  
+
         participantSocketIDs.forEach((participantSocketID) => {
           io.to(participantSocketID).emit('roomClosed');
         });
         delete activeRooms[roomID];
         console.log(`Room ${roomID} is now closed.`);
       }
-  
+
       console.log(`Active room ${roomID} participants:`, room.participants);
     }
   });
-  
-  
+
+
 
 
 
@@ -271,37 +297,50 @@ io.on("connection", (socket) => {
   socket.on('disconnect', () => {
     if (currentRoom) {
       const roomID = currentRoom.roomID;
+      console.log(`Disconnecting socket: ${socket.id} from room: ${roomID}`);
       delete currentRoom.participants[socket.id];
       socket.leave(`room-${roomID}`);
-  
+
       // Notify other participants about the disconnection
+      console.log(`Emitting participantLeft event for: ${socket.id}`);
       io.to(`room-${roomID}`).emit('participantLeft', { participantID: socket.id });
       // Update participant list
       io.to(`room-${roomID}`).emit(
         'participantList',
         Object.values(currentRoom.participants)
       );
-  
-      if (Object.keys(currentRoom.participants).length === 1) {
+
+      // Remove the socket from matchedSocket
+      console.log(`Deleting socket: ${socket.id} from matchedSocket`);
+      delete matchedSocket[socket.id];
+
+      const participantCount = Object.keys(currentRoom.participants).length;
+      if (participantCount === 1) {
         // If only one participant left in the room
         const remainingParticipantID = Object.keys(currentRoom.participants)[0];
-  
-        // Notify the remaining participant about the disconnection and remove the room
-        io.to(remainingParticipantID).emit('ghostLost');
+
+        // Notify the remaining participant about the disconnection
+        console.log(`Emitting ghostLost event for the last participant: ${remainingParticipantID}`);
+        io.to(remainingParticipantID).emit('roomClosed');
         const remainingSocket = io.sockets.sockets[remainingParticipantID];
         if (remainingSocket) {
           remainingSocket.leave(`room-${roomID}`);
         }
+
+        // Delete the room
+        console.log(`Deleting room: ${roomID}`);
+        delete activeRooms[roomID];
+      } else if (participantCount === 0) {
+        // If no participants left in the room, delete the room
+        console.log(`No participants left in room: ${roomID}. Deleting the room.`);
         delete activeRooms[roomID];
       }
-      
-      if (Object.keys(currentRoom.participants).length === 0) {
-        delete activeRooms[roomID];
-      }
+
       currentRoom = null;
     }
   });
-  
+
+
 
   // Helper function to join a room
   function joinRoom(socket, roomID) {
