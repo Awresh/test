@@ -293,6 +293,7 @@ io.on("connection", (socket) => {
     }
   });
 
+  
   socket.on('typing', (data) => {
     const { roomID } = data;
     socket.to(`room-${roomID}`).emit('typing', data);
