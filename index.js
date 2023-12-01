@@ -229,14 +229,14 @@ io.on("connection", (socket) => {
         socket.leave(`room-${roomID}`);
         const leavingParticipant = room.participants[socket.id];
         delete room.participants[socket.id];
-       // console.log(`User ${leavingParticipant.nickname} (${socket.id}) left room ${roomID} individually.`);
-  
+       console.log(`User ${leavingParticipant.nickname} (${socket.id}) left room ${roomID} individually.`);
+       io.to(`room-${roomID}`).emit('participantLeft', { participantID: socket.id ,name:leavingParticipant.nickname});
         // Emit event to other participant(s) in the room
-        participantSocketIDs.forEach((participantSocketID) => {
-          if (participantSocketID !== socket.id) {
-            io.to(participantSocketID).emit('participantLeft', { participantID: socket.id, nickname: leavingParticipant.nickname });
-          }
-        });
+        // participantSocketIDs.forEach((participantSocketID) => {
+        //   if (participantSocketID !== socket.id) {
+        //     io.to(participantSocketID).emit('participantLeft', { participantID: socket.id, nickname: leavingParticipant.nickname });
+        //   }
+        // });
       }
   
       console.log(`Active room ${roomID} participants:`, room.participants);
@@ -244,10 +244,6 @@ io.on("connection", (socket) => {
     console.log("Waiting List:", waitingUser);
   });
   
-
-
-
-
 
   socket.on("createRoom", () => {
     const newRoomID = roomID++; // Increment and assign new room ID
@@ -281,7 +277,7 @@ io.on("connection", (socket) => {
     console.log("Chat message received:", data);
 
     if (currentRoom) {
-      const { sender, message } = data;
+      const { sender, message,timestamp } = data;
       const roomID = currentRoom.roomID;
       const senderNickname = currentRoom.participants[socket.id].nickname;
 
@@ -289,6 +285,7 @@ io.on("connection", (socket) => {
       io.to(`room-${roomID}`).emit("chat message", {
         sender: senderNickname,
         message,
+        timestamp
       });
       console.log(`Message sent in room ${roomID} by ${senderNickname}: ${message}`);
     } else {
@@ -296,16 +293,29 @@ io.on("connection", (socket) => {
     }
   });
 
+  socket.on('typing', (data) => {
+    const { roomID } = data;
+    socket.to(`room-${roomID}`).emit('typing', data);
+    console.log('Typing event emitted for room:', roomID);
+  });
+
+
   socket.on('disconnect', () => {
     if (currentRoom) {
       const roomID = currentRoom.roomID;
       console.log(`Disconnecting socket: ${socket.id} from room: ${roomID}`);
+     let name = 'undefined';
+    if (currentRoom.participants[socket.id] && currentRoom.participants[socket.id].nickname) {
+      name = currentRoom.participants[socket.id].nickname;
+    }
       delete currentRoom.participants[socket.id];
       socket.leave(`room-${roomID}`);
 
       // Notify other participants about the disconnection
-      console.log(`Emitting participantLeft event for: ${socket.id}`);
-      io.to(`room-${roomID}`).emit('participantLeft', { participantID: socket.id });
+      console.log(`Emitting participantLeft event for: ${name}`);
+      if(name !=='undefined'){
+        io.to(`room-${roomID}`).emit('participantLeft', { participantID: socket.id ,name});
+      }
       // Update participant list
       io.to(`room-${roomID}`).emit(
         'participantList',
