@@ -255,7 +255,7 @@ io.on("connection", (socket) => {
     currentRoom = room;
 
     socket.join(`room-${newRoomID}`);
-    socket.emit("roomCreated", { roomID: newRoomID });
+    socket.emit("roomCreated",{ roomID: newRoomID });
 
     // Automatically join the room after creating it
     joinRoom(socket, newRoomID);
@@ -378,6 +378,13 @@ io.on("connection", (socket) => {
         // Notify other participants about the new participant
         socket.to(`room-${roomID}`).emit("participantJoined", { nickname });
         console.log("room join: " + roomID + " nickname: " + nickname);
+        // Check if there are other participants in the room
+      const numParticipants = Object.keys(room.participants).length;
+      if (numParticipants > 1) {
+        // Emit an event to enable keyboard functionality
+        socket.emit("enableKeyboard");
+        console.log("Keyboard enabled for room: " + roomID);
+      }
       } else {
         socket.emit("roomFull");
         console.log("room full");
