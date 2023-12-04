@@ -92,8 +92,8 @@ io.on("connection", (socket) => {
       // Remove matched user from waiting list
       waitingUser.splice(matchingInterestIndex, 1);
       // Emit the matched interests (as an array) to the user who submitted the interests
-      socket.to(matchingUser.socketID).emit('matchedInterests', Array.from(["You both like.",...matchedInterests]));
-      socket.emit('matchedInterests', Array.from(["You both like.",...matchedInterests]));
+      socket.to(matchingUser.socketID).emit('matchedInterests', Array.from(["You both like.", ...matchedInterests]));
+      socket.emit('matchedInterests', Array.from(["You both like.", ...matchedInterests]));
       // Join current user to the matched room
       matchedSocket[socket.id].push(matchingUser.socketID);
       matchedSocket[matchingUser.socketID].push(socket.id);
@@ -116,7 +116,7 @@ io.on("connection", (socket) => {
         interests: interests,
         roomID: newRoomID,
         timestamp: Date.now(),// Add a timestamp when the user is pushed
-        socket:socket 
+        socket: socket
       });
       //if two user are waiting max 2 second then match them eatch other and emmit interest no match found you got random ghots
     }
@@ -284,7 +284,7 @@ io.on("connection", (socket) => {
     }, delay);
   }
 
- 
+
   socket.on('stop', (roomID) => {
     if (activeRooms[roomID]) {
       const room = activeRooms[roomID];
@@ -364,11 +364,15 @@ io.on("connection", (socket) => {
     if (currentRoom) {
       const { sender, message, timestamp } = data;
       const roomID = currentRoom.roomID;
-      const senderNickname = currentRoom.participants[socket.id].nickname;
+      if (sender == '' || null) {
+
+        sender = currentRoom.participants[socket.id].nickname;
+      }
+      
 
       // Send the message to the receiver
       io.to(`room-${roomID}`).emit("chat message", {
-        sender: senderNickname,
+        sender: sender,
         message,
         timestamp
       });
