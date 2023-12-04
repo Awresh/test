@@ -364,11 +364,10 @@ io.on("connection", (socket) => {
     if (currentRoom) {
       const { sender, message, timestamp } = data;
       const roomID = currentRoom.roomID;
-      if (sender == '' || null) {
-
+      if (sender === '' || sender === null) {
         sender = currentRoom.participants[socket.id].nickname;
       }
-      
+
 
       // Send the message to the receiver
       io.to(`room-${roomID}`).emit("chat message", {
