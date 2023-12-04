@@ -375,7 +375,7 @@ io.on("connection", (socket) => {
         message,
         timestamp
       });
-      console.log(`Message sent in room ${roomID} by ${senderNickname}: ${message}`);
+      console.log(`Message sent in room ${roomID} by ${sender}: ${message}`);
     } else {
       console.log("No active room found for message:", data);
     }
