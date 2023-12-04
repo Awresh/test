@@ -93,7 +93,7 @@ io.on("connection", (socket) => {
       waitingUser.splice(matchingInterestIndex, 1);
       // Emit the matched interests (as an array) to the user who submitted the interests
       socket.to(matchingUser.socketID).emit('matchedInterests', Array.from(matchedInterests));
-      socket.emit('matchedInterests', Array.from(matchedInterests));
+      socket.emit('matchedInterests', Array.from(["You both like.",...matchedInterests]));
       // Join current user to the matched room
       matchedSocket[socket.id].push(matchingUser.socketID);
       matchedSocket[matchingUser.socketID].push(socket.id);
@@ -115,11 +115,126 @@ io.on("connection", (socket) => {
         socketID: socket.id,
         interests: interests,
         roomID: newRoomID,
-        timestamp: Date.now(), // Add a timestamp when the user is pushed
+        timestamp: Date.now(),// Add a timestamp when the user is pushed
+        socket:socket 
       });
       //if two user are waiting max 2 second then match them eatch other and emmit interest no match found you got random ghots
     }
   });
+  // Function to check for matches after a certain interval
+  function checkForMatches() {
+    const now = Date.now();
+    const waitingLongEnough = waitingUser.filter(user => now - user.timestamp > 2000);
+
+    if (waitingLongEnough.length >= 2) {
+      // Shuffle the waiting users randomly
+      const shuffledUsers = shuffle(waitingLongEnough);
+
+      // Find a suitable pair of users based on conditions
+      let user1, user2;
+      let pairFound = false;
+
+      for (let i = 0; i < shuffledUsers.length - 1; i++) {
+        for (let j = i + 1; j < shuffledUsers.length; j++) {
+          const potentialUser1 = shuffledUsers[i];
+          const potentialUser2 = shuffledUsers[j];
+
+          const user1AlreadyMatched = matchedSocket[potentialUser1.socketID] && matchedSocket[potentialUser1.socketID].includes(potentialUser2.socketID);
+          const user2AlreadyMatched = matchedSocket[potentialUser2.socketID] && matchedSocket[potentialUser2.socketID].includes(potentialUser1.socketID);
+          const notSameUser = potentialUser1.socketID !== potentialUser2.socketID;
+
+          if (!user1AlreadyMatched && !user2AlreadyMatched && notSameUser) {
+            user1 = potentialUser1;
+            user2 = potentialUser2;
+            pairFound = true;
+            break;
+          }
+        }
+        if (pairFound) break;
+      }
+
+      if (pairFound) {
+        // Remove matched users from waiting list
+        waitingUser = waitingUser.filter(user => user !== user1 && user !== user2);
+
+        // Get rooms of both users
+        const roomToLeave1 = Object.keys(activeRooms).find(roomID => activeRooms[roomID].participants.hasOwnProperty(user1.socketID));
+        const roomToLeave2 = Object.keys(activeRooms).find(roomID => activeRooms[roomID].participants.hasOwnProperty(user2.socketID));
+
+        // Leave rooms for both users
+        leaveRoom(user1.socketID, roomToLeave1);
+        leaveRoom(user2.socketID, roomToLeave2);
+
+        // Create a new room for the matched users
+        const newRoomID = roomID++;
+        const room = {
+          roomID: newRoomID,
+          participants: {},
+        };
+        activeRooms[newRoomID] = room;
+
+        // Join users to the new room using their socket instances
+        const socket1 = user1.socket;
+        const socket2 = user2.socket;
+        joinRoom(user1.socket, newRoomID);
+        joinRoom(user2.socket, newRoomID);
+
+
+        // Store matching information
+        if (!matchedSocket[user1.socketID]) {
+          matchedSocket[user1.socketID] = [];
+        }
+        matchedSocket[user1.socketID].push(user2.socketID);
+
+        if (!matchedSocket[user2.socketID]) {
+          matchedSocket[user2.socketID] = [];
+        }
+        matchedSocket[user2.socketID].push(user1.socketID);
+
+        // Set timeout to remove the socket IDs after 3 minutes
+        removeSocketIDAfterDelay(user1.socketID, user2.socketID, 30000);
+
+        // Emit message to both users about matching with a random ghost
+        socket1.emit('matchedInterests', ["No match found, you are matched with a random ghost"]);
+        socket2.emit('matchedInterests', ["No match found, you are matched with a random ghost"]);
+
+        // You might want to set some timeout or do some cleanup here as well
+      }
+    }
+  }
+
+  // Function to shuffle array elements (Fisher-Yates shuffle algorithm)
+  function shuffle(array) {
+    let currentIndex = array.length;
+    let temporaryValue, randomIndex;
+
+    // While there remain elements to shuffle
+    while (currentIndex !== 0) {
+      // Pick a remaining element
+      randomIndex = Math.floor(Math.random() * currentIndex);
+      currentIndex -= 1;
+
+      // Swap it with the current element
+      temporaryValue = array[currentIndex];
+      array[currentIndex] = array[randomIndex];
+      array[randomIndex] = temporaryValue;
+    }
+
+    return array;
+  }
+  // Function to leave a room
+  function leaveRoom(socketID, roomID) {
+    // Implement logic to leave the room
+    if (roomID && activeRooms[roomID] && activeRooms[roomID].participants.hasOwnProperty(socketID)) {
+      // Remove the user from the room
+      delete activeRooms[roomID].participants[socketID];
+      // Emit any necessary events or perform cleanup related to leaving the room
+    }
+  }
+
+  // Set interval to periodically check for matches
+  setInterval(checkForMatches, 100); // Checks every 10 seconds (adjust as needed)
+
   // Function to remove socket ID from matchedSocket after a delay
   function removeSocketIDAfterDelay(socketID, matchedSocketID, delay) {
     setTimeout(() => {
@@ -169,42 +284,12 @@ io.on("connection", (socket) => {
     }, delay);
   }
 
-  // socket.on('stop', (roomID) => {
-  //   // Check if the room exists in activeRooms
-  //   if (activeRooms[roomID]) {
-  //     const room = activeRooms[roomID];
-  //     const participantSocketIDs = Object.keys(room.participants);
-
-  //     if (participantSocketIDs.length > 2) {
-  //       // More than two participants, only the user hitting 'stop' should leave
-  //       io.to(socket.id).emit('ghostLost');
-  //       socket.leave(`room-${roomID}`);
-  //       return;
-  //     } else {
-  //       // Two or fewer participants, both should leave the room
-  //       participantSocketIDs.forEach((participantSocketID) => {
-  //         io.to(participantSocketID).emit('ghostLost');
-  //         const socketToLeave = io.sockets.sockets[participantSocketID];
-  //         if (socketToLeave) {
-  //           socketToLeave.leave(`room-${roomID}`);
-  //         }
-  //       });
-
-  //       // Emit 'roomClosed' when room is closed
-  //       participantSocketIDs.forEach((participantSocketID) => {
-  //         io.to(participantSocketID).emit('roomClosed');
-  //       });
-  //       // Remove the room from activeRooms
-  //       delete activeRooms[roomID];
-  //     }     
-  //   }
-  // });
-
+ 
   socket.on('stop', (roomID) => {
     if (activeRooms[roomID]) {
       const room = activeRooms[roomID];
       const participantSocketIDs = Object.keys(room.participants);
-  
+
       if (participantSocketIDs.length <= 2) {
         // Remove both users from active room
         participantSocketIDs.forEach((participantSocketID) => {
@@ -214,13 +299,13 @@ io.on("connection", (socket) => {
             waitingUser.splice(waitingUserIndex, 1);
             console.log(`User ${participantSocketID} removed from waiting list.`);
           }
-  
+
           io.to(participantSocketID).emit('roomClosed');
           const leavingParticipant = room.participants[participantSocketID];
           console.log(`User ${leavingParticipant.nickname} (${participantSocketID}) left room ${roomID}.`);
           delete room.participants[participantSocketID];
         });
-  
+
         delete activeRooms[roomID];
         console.log(`Room ${roomID} is now closed.`);
       } else {
@@ -229,8 +314,8 @@ io.on("connection", (socket) => {
         socket.leave(`room-${roomID}`);
         const leavingParticipant = room.participants[socket.id];
         delete room.participants[socket.id];
-       console.log(`User ${leavingParticipant.nickname} (${socket.id}) left room ${roomID} individually.`);
-       io.to(`room-${roomID}`).emit('participantLeft', { participantID: socket.id ,name:leavingParticipant.nickname});
+        console.log(`User ${leavingParticipant.nickname} (${socket.id}) left room ${roomID} individually.`);
+        io.to(`room-${roomID}`).emit('participantLeft', { participantID: socket.id, name: leavingParticipant.nickname });
         // Emit event to other participant(s) in the room
         // participantSocketIDs.forEach((participantSocketID) => {
         //   if (participantSocketID !== socket.id) {
@@ -238,12 +323,12 @@ io.on("connection", (socket) => {
         //   }
         // });
       }
-  
+
       console.log(`Active room ${roomID} participants:`, room.participants);
     }
     console.log("Waiting List:", waitingUser);
   });
-  
+
 
   socket.on("createRoom", () => {
     const newRoomID = roomID++; // Increment and assign new room ID
@@ -255,7 +340,7 @@ io.on("connection", (socket) => {
     currentRoom = room;
 
     socket.join(`room-${newRoomID}`);
-    socket.emit("roomCreated",{ roomID: newRoomID });
+    socket.emit("roomCreated", { roomID: newRoomID });
 
     // Automatically join the room after creating it
     joinRoom(socket, newRoomID);
@@ -277,7 +362,7 @@ io.on("connection", (socket) => {
     console.log("Chat message received:", data);
 
     if (currentRoom) {
-      const { sender, message,timestamp } = data;
+      const { sender, message, timestamp } = data;
       const roomID = currentRoom.roomID;
       const senderNickname = currentRoom.participants[socket.id].nickname;
 
@@ -293,7 +378,7 @@ io.on("connection", (socket) => {
     }
   });
 
-  
+
   socket.on('typing', (data) => {
     const { roomID } = data;
     socket.to(`room-${roomID}`).emit('typing', data);
@@ -305,17 +390,17 @@ io.on("connection", (socket) => {
     if (currentRoom) {
       const roomID = currentRoom.roomID;
       console.log(`Disconnecting socket: ${socket.id} from room: ${roomID}`);
-     let name = 'undefined';
-    if (currentRoom.participants[socket.id] && currentRoom.participants[socket.id].nickname) {
-      name = currentRoom.participants[socket.id].nickname;
-    }
+      let name = 'undefined';
+      if (currentRoom.participants[socket.id] && currentRoom.participants[socket.id].nickname) {
+        name = currentRoom.participants[socket.id].nickname;
+      }
       delete currentRoom.participants[socket.id];
       socket.leave(`room-${roomID}`);
 
       // Notify other participants about the disconnection
       console.log(`Emitting participantLeft event for: ${name}`);
-      if(name !=='undefined'){
-        io.to(`room-${roomID}`).emit('participantLeft', { participantID: socket.id ,name});
+      if (name !== 'undefined') {
+        io.to(`room-${roomID}`).emit('participantLeft', { participantID: socket.id, name });
       }
       // Update participant list
       io.to(`room-${roomID}`).emit(
@@ -364,14 +449,17 @@ io.on("connection", (socket) => {
 
 
   // Helper function to join a room
-  function joinRoom(socket, roomID) {
+  function joinRoom(socket, roomID, check = false) {
     const room = activeRooms[roomID];
+    if (check) {
+      socket = io.sockets.sockets[socket];
+    }
     if (room) {
       const nickname = generateNickname(room);
       if (nickname) {
         room.participants[socket.id] = { nickname };
         currentRoom = room;
-
+        console.log(`room-${roomID}`);
         socket.join(`room-${roomID}`);
         socket.emit("roomJoined", { roomID, nickname });
 
@@ -379,12 +467,12 @@ io.on("connection", (socket) => {
         socket.to(`room-${roomID}`).emit("participantJoined", { nickname });
         console.log("room join: " + roomID + " nickname: " + nickname);
         // Check if there are other participants in the room
-      const numParticipants = Object.keys(room.participants).length;
-      if (numParticipants > 1) {
-        // Emit an event to enable keyboard functionality
-        socket.emit("enableKeyboard");
-        console.log("Keyboard enabled for room: " + roomID);
-      }
+        const numParticipants = Object.keys(room.participants).length;
+        if (numParticipants > 1) {
+          // Emit an event to enable keyboard functionality
+          socket.emit("enableKeyboard");
+          console.log("Keyboard enabled for room: " + roomID);
+        }
       } else {
         socket.emit("roomFull");
         console.log("room full");
