@@ -92,7 +92,7 @@ io.on("connection", (socket) => {
       // Remove matched user from waiting list
       waitingUser.splice(matchingInterestIndex, 1);
       // Emit the matched interests (as an array) to the user who submitted the interests
-      socket.to(matchingUser.socketID).emit('matchedInterests', Array.from(matchedInterests));
+      socket.to(matchingUser.socketID).emit('matchedInterests', Array.from(["You both like.",...matchedInterests]));
       socket.emit('matchedInterests', Array.from(["You both like.",...matchedInterests]));
       // Join current user to the matched room
       matchedSocket[socket.id].push(matchingUser.socketID);
