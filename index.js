@@ -449,11 +449,8 @@ io.on("connection", (socket) => {
 
 
   // Helper function to join a room
-  function joinRoom(socket, roomID, check = false) {
+  function joinRoom(socket, roomID) {
     const room = activeRooms[roomID];
-    if (check) {
-      socket = io.sockets.sockets[socket];
-    }
     if (room) {
       const nickname = generateNickname(room);
       if (nickname) {
