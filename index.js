@@ -177,10 +177,8 @@ io.on("connection", (socket) => {
         // Join users to the new room using their socket instances
         const socket1 = io.sockets.sockets.get(user1.socketID);
         const socket2 = io.sockets.sockets.get(user2.socketID);
-        console.log(socket1)
-        console.log(socket2)
-        joinRoom(socket1,newRoomID)
-        joinRoom(socket2,newRoomID)
+        joinRoom(socket1, newRoomID)
+        joinRoom(socket2, newRoomID)
         // Store matching information
         if (!matchedSocket[user1.socketID]) {
           matchedSocket[user1.socketID] = [];
@@ -194,11 +192,13 @@ io.on("connection", (socket) => {
 
         // Set timeout to remove the socket IDs after 3 minutes
         removeSocketIDAfterDelay(user1.socketID, user2.socketID, 30000);
-
+        // Update the users' current rooms on the server-side by emitting messages to their sockets
+        socket1.emit('updateCurrentRoom', room);
+        socket2.emit('updateCurrentRoom', room);
+        currentRoom=room;
         // Emit message to both users about matching with a random ghost
         socket1.emit('matchedInterests', ["No match found, you are matched with a random ghost"]);
         socket2.emit('matchedInterests', ["No match found, you are matched with a random ghost"]);
-
         // You might want to set some timeout or do some cleanup here as well
       }
     }
@@ -286,7 +286,11 @@ io.on("connection", (socket) => {
     }, delay);
   }
 
-
+  socket.on('updateCurrentRoom', (roomID) => {
+    const room = activeRooms[roomID];
+    currentRoom = room;
+    console.log("work:",room);
+  });
   socket.on('stop', (roomID) => {
     if (activeRooms[roomID]) {
       const room = activeRooms[roomID];
@@ -364,16 +368,12 @@ io.on("connection", (socket) => {
     console.log("Chat message received:", data);
 
     if (currentRoom) {
-      const { sender, message, timestamp,roomID } = data;
-      if(roomID == '' || roomID === null){
-         roomID = currentRoom.roomID;
-      }
-    
+      const { sender, message, timestamp } = data;
+      roomID = currentRoom.roomID;
+
       if (sender === '' || sender === null) {
         sender = currentRoom.participants[socket.id].nickname;
       }
-
-
       // Send the message to the receiver
       io.to(`room-${roomID}`).emit("chat message", {
         sender: sender,
@@ -398,33 +398,30 @@ io.on("connection", (socket) => {
     if (currentRoom) {
       const roomID = currentRoom.roomID;
       console.log(`Disconnecting socket: ${socket.id} from room: ${roomID}`);
-      let name = 'undefined';
-      if (currentRoom.participants[socket.id] && currentRoom.participants[socket.id].nickname) {
-        name = currentRoom.participants[socket.id].nickname;
-      }
+     let name = 'undefined';
+    if (currentRoom.participants[socket.id] && currentRoom.participants[socket.id].nickname) {
+      name = currentRoom.participants[socket.id].nickname;
+    }
       delete currentRoom.participants[socket.id];
       socket.leave(`room-${roomID}`);
 
       // Notify other participants about the disconnection
       console.log(`Emitting participantLeft event for: ${name}`);
-      if (name !== 'undefined') {
-        io.to(`room-${roomID}`).emit('participantLeft', { participantID: socket.id, name });
+      if(name !=='undefined'){
+        io.to(`room-${roomID}`).emit('participantLeft', { participantID: socket.id ,name});
       }
       // Update participant list
       io.to(`room-${roomID}`).emit(
         'participantList',
         Object.values(currentRoom.participants)
       );
-
       // Remove the socket from matchedSocket
       console.log(`Deleting socket: ${socket.id} from matchedSocket`);
       delete matchedSocket[socket.id];
-
       const participantCount = Object.keys(currentRoom.participants).length;
       if (participantCount === 1) {
         // If only one participant left in the room
         const remainingParticipantID = Object.keys(currentRoom.participants)[0];
-
         // Notify the remaining participant about the disconnection
         console.log(`Emitting ghostLost event for the last participant: ${remainingParticipantID}`);
         io.to(remainingParticipantID).emit('roomClosed');
@@ -432,7 +429,6 @@ io.on("connection", (socket) => {
         if (remainingSocket) {
           remainingSocket.leave(`room-${roomID}`);
         }
-
         // Delete the room
         console.log(`Deleting room: ${roomID}`);
         delete activeRooms[roomID];
@@ -441,7 +437,6 @@ io.on("connection", (socket) => {
         console.log(`No participants left in room: ${roomID}. Deleting the room.`);
         delete activeRooms[roomID];
       }
-
       // Remove user from waiting list if present
       const waitingUserIndex = waitingUser.findIndex(user => user.socketID === socket.id);
       if (waitingUserIndex !== -1) {
@@ -449,7 +444,6 @@ io.on("connection", (socket) => {
         console.log(`User ${socket.id} removed from waiting list.`);
       }
       console.log("Waiting List:", waitingUser);
-
       currentRoom = null;
     }
   });
@@ -458,7 +452,6 @@ io.on("connection", (socket) => {
     currentRoom = room;
     console.log("Updated room:", room);
   });
-
   // Helper function to join a room
   function joinRoom(socket, roomID) {
     const room = activeRooms[roomID];
