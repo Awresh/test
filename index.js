@@ -2,6 +2,7 @@ const http = require("http");
 const express = require("express");
 const socketIO = require("socket.io");
 const cors = require("cors");
+const { connected } = require("process");
 
 const app = express();
 app.use(cors());
@@ -174,12 +175,12 @@ io.on("connection", (socket) => {
         activeRooms[newRoomID] = room;
 
         // Join users to the new room using their socket instances
-        const socket1 = user1.socket;
-        const socket2 = user2.socket;
-        joinRoom(user1.socket, newRoomID);
-        joinRoom(user2.socket, newRoomID);
-
-
+        const socket1 = io.sockets.sockets.get(user1.socketID);
+        const socket2 = io.sockets.sockets.get(user2.socketID);
+        console.log(socket1)
+        console.log(socket2)
+        joinRoom(socket1,newRoomID)
+        joinRoom(socket2,newRoomID)
         // Store matching information
         if (!matchedSocket[user1.socketID]) {
           matchedSocket[user1.socketID] = [];
@@ -202,6 +203,7 @@ io.on("connection", (socket) => {
       }
     }
   }
+
 
   // Function to shuffle array elements (Fisher-Yates shuffle algorithm)
   function shuffle(array) {
@@ -362,8 +364,11 @@ io.on("connection", (socket) => {
     console.log("Chat message received:", data);
 
     if (currentRoom) {
-      const { sender, message, timestamp } = data;
-      const roomID = currentRoom.roomID;
+      const { sender, message, timestamp,roomID } = data;
+      if(roomID == '' || roomID === null){
+         roomID = currentRoom.roomID;
+      }
+    
       if (sender === '' || sender === null) {
         sender = currentRoom.participants[socket.id].nickname;
       }
@@ -385,7 +390,7 @@ io.on("connection", (socket) => {
   socket.on('typing', (data) => {
     const { roomID } = data;
     socket.to(`room-${roomID}`).emit('typing', data);
-    console.log('Typing event emitted for room:', roomID);
+    //console.log('Typing event emitted for room:', roomID);
   });
 
 
@@ -448,8 +453,11 @@ io.on("connection", (socket) => {
       currentRoom = null;
     }
   });
-
-
+  // Within the socket event handling logic
+  socket.on('updatedCurrentRoom', (room) => {
+    currentRoom = room;
+    console.log("Updated room:", room);
+  });
 
   // Helper function to join a room
   function joinRoom(socket, roomID) {
