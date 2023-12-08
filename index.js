@@ -408,6 +408,9 @@ io.on("connection", (socket) => {
     socket.to(`room-${roomID}`).emit('typing', data);
     //console.log('Typing event emitted for room:', roomID);
   });
+  socket.on('keepActive', () => {
+    console.log("Server is activated");
+  });
 
 
   socket.on('disconnect', () => {
