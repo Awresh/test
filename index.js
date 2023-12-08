@@ -200,6 +200,7 @@ io.on("connection", (socket) => {
         socket1.emit('matchedInterests', ["No match found, you are matched with a random ghost"]);
         socket2.emit('matchedInterests', ["No match found, you are matched with a random ghost"]);
         // You might want to set some timeout or do some cleanup here as well
+        roomID++;
       }
     }
   }
@@ -406,6 +407,9 @@ io.on("connection", (socket) => {
     const { roomID } = data;
     socket.to(`room-${roomID}`).emit('typing', data);
     //console.log('Typing event emitted for room:', roomID);
+  });
+  socket.on('keepActive', () => {
+    console.log("Server is activated");
   });
 
 
