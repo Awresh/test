@@ -85,7 +85,7 @@ io.on("connection", (socket) => {
 
 
       // Set timeout to remove the socket ID after 3 minutes
-      removeSocketIDAfterDelay(socket.id, matchingUser.socketID, 30000);
+      removeSocketIDAfterDelay(socket.id, matchingUser.socketID, 180000);
       const roomID = matchingUser.roomID;
 
 
