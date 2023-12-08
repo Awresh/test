@@ -200,6 +200,7 @@ io.on("connection", (socket) => {
         socket1.emit('matchedInterests', ["No match found, you are matched with a random ghost"]);
         socket2.emit('matchedInterests', ["No match found, you are matched with a random ghost"]);
         // You might want to set some timeout or do some cleanup here as well
+        roomID++;
       }
     }
   }
