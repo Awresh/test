@@ -101,6 +101,7 @@ io.on("connection", (socket) => {
       joinRoom(socket, roomID);
     } else {
       // No match found, create a new room for the current user
+      roomID++;
       const newRoomID = roomID++;
       const room = {
         roomID: newRoomID,
@@ -117,7 +118,6 @@ io.on("connection", (socket) => {
         interests: interests,
         roomID: newRoomID,
         timestamp: Date.now(),// Add a timestamp when the user is pushed
-        socket: socket
       });
       //if two user are waiting max 2 second then match them eatch other and emmit interest no match found you got random ghots
     }
@@ -157,14 +157,13 @@ io.on("connection", (socket) => {
       if (pairFound) {
         // Remove matched users from waiting list
         waitingUser = waitingUser.filter(user => user !== user1 && user !== user2);
-
         // Get rooms of both users
         const roomToLeave1 = Object.keys(activeRooms).find(roomID => activeRooms[roomID].participants.hasOwnProperty(user1.socketID));
         const roomToLeave2 = Object.keys(activeRooms).find(roomID => activeRooms[roomID].participants.hasOwnProperty(user2.socketID));
 
         // Leave rooms for both users
-        leaveRoom(user1.socketID, roomToLeave1,io);
-        leaveRoom(user2.socketID, roomToLeave2,io);
+        leaveRoom(user1.socketID, roomToLeave1, io);
+        leaveRoom(user2.socketID, roomToLeave2, io);
 
         // Create a new room for the matched users
         const newRoomID = roomID++;
@@ -195,12 +194,11 @@ io.on("connection", (socket) => {
         // Update the users' current rooms on the server-side by emitting messages to their sockets
         socket1.emit('updateCurrentRoom', room);
         socket2.emit('updateCurrentRoom', room);
-        currentRoom=room;
+        currentRoom = room;
         // Emit message to both users about matching with a random ghost
         socket1.emit('matchedInterests', ["No match found, you are matched with a random ghost"]);
         socket2.emit('matchedInterests', ["No match found, you are matched with a random ghost"]);
         // You might want to set some timeout or do some cleanup here as well
-        roomID++;
       }
     }
   }
@@ -228,30 +226,30 @@ io.on("connection", (socket) => {
   // Function to leave a room
   function leaveRoom(socketID, roomID, io) {
     if (roomID && activeRooms[roomID] && io) {
-        const room = activeRooms[roomID];
-        
-        if (room.participants.hasOwnProperty(socketID)) {
-            // Remove the user from the room
-            delete room.participants[socketID];
-            
-            // Get the socket associated with the socketID
-            const leaveSocket = io.sockets.sockets.get(socketID);
+      const room = activeRooms[roomID];
 
-            if (leaveSocket) {
-                // Remove the user from the room channel
-                leaveSocket.leave(`room-${roomID}`);
-                console.log(`User ${socketID} left room ${roomID} individually.`);
-                
-                // Optional: Notify other participants about the user leaving the room
-                io.to(`room-${roomID}`).emit('participantLeft', { participantID: socketID });
-            } else {
-                console.log(`Socket ${socketID} not found.`);
-            }
+      if (room.participants.hasOwnProperty(socketID)) {
+        // Remove the user from the room
+        delete room.participants[socketID];
+
+        // Get the socket associated with the socketID
+        const leaveSocket = io.sockets.sockets.get(socketID);
+
+        if (leaveSocket) {
+          // Remove the user from the room channel
+          leaveSocket.leave(`room-${roomID}`);
+          console.log(`User ${socketID} left room ${roomID} individually.`);
+
+          // Optional: Notify other participants about the user leaving the room
+          io.to(`room-${roomID}`).emit('participantLeft', { participantID: socketID });
+        } else {
+          console.log(`Socket ${socketID} not found.`);
         }
+      }
     } else {
-        console.log(`Invalid room or socket information.`);
+      console.log(`Invalid room or socket information.`);
     }
-}
+  }
 
 
   // Set interval to periodically check for matches
@@ -417,16 +415,16 @@ io.on("connection", (socket) => {
     if (currentRoom) {
       const roomID = currentRoom.roomID;
       console.log(`Disconnecting socket: ${socket.id} from room: ${roomID}`);
-     let name = 'undefined';
-    if (currentRoom.participants[socket.id] && currentRoom.participants[socket.id].nickname) {
-      name = currentRoom.participants[socket.id].nickname;
-    }
+      let name = 'undefined';
+      if (currentRoom.participants[socket.id] && currentRoom.participants[socket.id].nickname) {
+        name = currentRoom.participants[socket.id].nickname;
+      }
       delete currentRoom.participants[socket.id];
       socket.leave(`room-${roomID}`);
       // Notify other participants about the disconnection
       console.log(`Emitting participantLeft event for: ${name}`);
-      if(name !=='undefined'){
-        io.to(`room-${roomID}`).emit('participantLeft', { participantID: socket.id ,name});
+      if (name !== 'undefined') {
+        io.to(`room-${roomID}`).emit('participantLeft', { participantID: socket.id, name });
       }
       // Update participant list
       io.to(`room-${roomID}`).emit(
@@ -464,12 +462,12 @@ io.on("connection", (socket) => {
       console.log("Waiting List:", waitingUser);
       currentRoom = null;
     }
-    currentRoom=null;
+    currentRoom = null;
   });
   // Within the socket event handling logic
   // Helper function to join a room
   function joinRoom(socket, roomID) {
-    currentRoom=null;
+    currentRoom = null;
     const room = activeRooms[roomID];
     if (room) {
       const nickname = generateNickname(room);
